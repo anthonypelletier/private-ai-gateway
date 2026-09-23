@@ -4,6 +4,7 @@ mod audit;
 mod capture;
 mod checks;
 mod client;
+mod curl;
 use desktop_runtime::cli as managed;
 mod send;
 mod serve;
@@ -42,6 +43,7 @@ async fn main() {
                 args::Command::Audit(a) => audit::run(a, production).await,
                 args::Command::Sessions(a) => sessions::run(a, production).await,
                 args::Command::Send(a) => send::run(a, production).await,
+                args::Command::Curl(a) => curl::run(a, production).await,
                 args::Command::Serve(mut a) => {
                     a.json_events |= json;
                     serve::run(a, production).await

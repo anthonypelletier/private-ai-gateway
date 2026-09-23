@@ -1,5 +1,7 @@
 //! ACI command arguments for Private AI Proxy, built on clap's derive API.
 
+use std::ffi::OsString;
+
 use clap::{Args, Subcommand};
 
 use crate::checks::RequiredClaim;
@@ -28,6 +30,10 @@ pub enum Command {
                  is also read from the ACI_API_KEY environment variable."
     )]
     Send(SendArgs),
+    #[command(
+        about = "Verify the target's ACI service, then run the system curl with its TLS SPKI pinned."
+    )]
+    Curl(CurlArgs),
     #[command(
         about = "Local verifying proxy (default 127.0.0.1:4180, plain HTTP on localhost). \
                  Verifies the service on startup and refuses to start unless VERIFIED, \
@@ -202,6 +208,27 @@ pub struct SendArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct CurlArgs {
+    #[arg(help = "HTTPS URL to request after its ACI service has been verified.")]
+    pub url: String,
+    #[arg(
+        long = "accept-compose",
+        value_name = "HEX",
+        help = "Compose hash to accept (spec 1.3 verifier policy); repeatable. Without \
+                it the compose measurement is verified and reported, and you appraise \
+                the provenance yourself."
+    )]
+    pub accepted_composes: Vec<String>,
+    #[arg(
+        last = true,
+        allow_hyphen_values = true,
+        value_name = "CURL_ARG",
+        help = "Supported request options passed to system curl. Put them after `--`; pap owns the URL and transport-security options."
+    )]
+    pub curl_args: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
 pub struct SessionsArgs {
     #[arg(help = "Base URL of the ACI service whose attested sessions to audit.")]
     pub base_url: String,
@@ -306,6 +333,7 @@ fn session_id(value: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::FromArgMatches;
 
     // Only `session_id` is ours; clap's own parsing needs no test, and
     // `RequiredClaim::parse` is covered in checks.rs.
@@ -320,5 +348,37 @@ mod tests {
         );
         let err = session_id("not-hex").unwrap_err();
         assert!(err.contains("spec 5.3"), "{err}");
+    }
+
+    #[test]
+    fn curl_args_after_separator_are_passed_through() {
+        let matches = Command::augment_subcommands(clap::Command::new("pap"))
+            .try_get_matches_from([
+                "pap",
+                "curl",
+                "https://example.com/v1/chat/completions",
+                "--accept-compose",
+                "abcd",
+                "--",
+                "--header",
+                "content-type: application/json",
+                "--data-binary",
+                "@request.json",
+            ])
+            .unwrap();
+        let Command::Curl(args) = Command::from_arg_matches(&matches).unwrap() else {
+            panic!("expected curl command");
+        };
+        assert_eq!(args.accepted_composes, ["abcd"]);
+        assert_eq!(
+            args.curl_args,
+            [
+                "--header",
+                "content-type: application/json",
+                "--data-binary",
+                "@request.json",
+            ]
+            .map(OsString::from)
+        );
     }
 }

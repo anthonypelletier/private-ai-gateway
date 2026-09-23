@@ -27,11 +27,40 @@ The same binary includes the ACI protocol commands:
 | `pap audit` | Audit saved ACI evidence offline; see `audit --help` for inputs. |
 | `pap sessions <url>` | Inspect and verify attested inference sessions. |
 | `pap send <url>` | Send an inference request using the ACI client. |
+| `pap curl <https-url> -- [options]` | Verify the service, then run system curl over its attested TLS SPKI pin. |
 | `pap serve <url>` | Run the local streaming proxy with post-delivery receipt audits. |
 
 `private-ai-proxy` and `aci` accept these same commands. They are compiled from
 this package's ACI modules, not forwarded to another executable. `serve` is standalone;
 `start` below manages the persistent background service and saved profiles.
+
+### One pinned curl request
+
+```sh
+pap curl https://tee.redpill.ai/v1/chat/completions -- \
+  --fail-with-body --no-buffer \
+  --header "Authorization: Bearer $ACI_API_KEY" \
+  --header 'content-type: application/json' \
+  --data-binary '{"model":"MODEL_ID","messages":[{"role":"user","content":"Hi"}],"provider":{"aci_verified":true}}'
+```
+
+`pap curl` verifies a fresh service report before starting system curl. It
+converts the observed TLS SPKI digest into curl's pin format; a failed
+verification or pin mismatch stops the request. The response stays on stdout,
+and verification output goes to stderr. This command does not audit the
+response receipt; use `pap send` or `pap serve` when that is required.
+
+The wrapper supports a single URL and these curl request options:
+
+| Options | Purpose |
+| --- | --- |
+| `--header`, `-H`, `--data`, `-d`, `--data-raw`, `--data-binary`, `--json`, `--form`, `-F`, `--upload-file`, `-T`, `--request`, `-X` | Build the request. |
+| `--fail`, `-f`, `--fail-with-body`, `--no-buffer`, `--silent`, `-s`, `--show-error`, `-S`, `--include`, `-i`, `--verbose`, `-v`, `--compressed`, `--head`, `-I` | Control output and transfer behavior. |
+| `--output`, `-o`, `--max-time`, `--connect-timeout` | Write the result or set timeouts. |
+
+Put options after `--` and give each value-taking option a separate argument.
+Additional URLs, redirects, proxy or TLS overrides, config files, and other
+curl options are rejected; this is deliberately not a general curl parser.
 
 ## Lifecycle
 

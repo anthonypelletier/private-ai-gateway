@@ -15,9 +15,8 @@ use crate::checks::{
 use crate::client::{host_of, normalize_base_url, random_nonce_hex, AciClient};
 use crate::transcript::Transcript;
 
-/// Everything `private-ai-proxy send` and `private-ai-proxy serve` need after a full online
-/// verify: the transcript, the report, and the client that observed the
-/// channel (ready to have the attested SPKI pinned).
+/// Everything `send`, `curl`, and `serve` need after a full online verify:
+/// the transcript, report, and client that observed the TLS channel.
 pub struct ServiceVerification {
     pub transcript: Transcript,
     pub report: AttestationReport,
