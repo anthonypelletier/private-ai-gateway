@@ -12,11 +12,14 @@ The [ACI specification](../spec/aci.md) is normative. The
 For an accepted ACI request, remote plaintext is limited to the workloads that
 must process it:
 
-1. the attested gateway workload; and
+1. the attested gateway workload, including its client-facing TLS terminator;
+   and
 2. the accepted provider workloads on the selected route, including a
    confidential router and model runner when they are separate.
 
 The client verifies the gateway and its channel before sending the request.
+The gateway process serves HTTP, so its TLS terminator must run inside the
+accepted attested workload.
 The measured gateway code verifies the selected provider and enforces the
 provider's attested channel binding before forwarding. A failed required check
 stops the request before that hop receives the prompt.
@@ -98,9 +101,9 @@ checks the ACI §9.1 chain:
    attested keyset.
 
 The last check matters. A valid quote beside an ordinary HTTPS connection does
-not protect the request if TLS terminates somewhere else. The Node and Bun
-runtime clients and the Rust CLI pin the observed certificate SPKI to the
-attested keyset.
+not protect the request if TLS terminates outside the accepted workload. The
+Node and Bun runtime clients and the Rust CLI pin the observed certificate
+SPKI to the attested keyset.
 
 The browser verifier can check the quote, binding chain, measurement, receipts,
 and sessions. Browser APIs do not expose the peer certificate, so browser-only

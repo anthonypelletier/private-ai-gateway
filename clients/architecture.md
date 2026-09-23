@@ -54,7 +54,8 @@ Every supported runtime path must:
 5. Reject expired keysets.
 6. Validate the destination hostname and require its observed TLS SPKI to
    appear in the attested keyset.
-7. Apply `aci_verified` and accepted-session constraints before forwarding.
+7. Apply `aci_verified` and accepted-session constraints unless the caller
+   explicitly opts out of verified provider serving.
 8. Capture the exact request and response wire digests needed for receipt
    verification.
 9. Verify the signed receipt and cited session before completing a response

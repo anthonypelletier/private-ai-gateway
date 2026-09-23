@@ -1,6 +1,9 @@
 # Run the Live End-to-End Suite
 
-The live suite starts a local gateway, calls real provider APIs, verifies returned artifacts, and preserves a redacted artifact bundle for diagnosis. It is an operator test, not part of the credential-free CI suite.
+The live suite starts a local gateway, calls real provider APIs, verifies
+returned artifacts, and preserves local artifacts for diagnosis. It is an
+operator test, not part of the credential-free CI suite. Configured bearer
+tokens are redacted, but request and response bytes remain in the artifacts.
 
 The implementation lives in `scripts/live_e2e/`. This page documents the code that exists today.
 

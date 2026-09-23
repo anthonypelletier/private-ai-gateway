@@ -53,6 +53,12 @@ never counted as a pass: the verdict line names each skip and its reason.
 Here id-5 is a `skip` — this CLI has no custody policy, so it does not claim
 to have checked private-key custody. The exit code is `0` only on `VERIFIED`.
 
+The default is a basic hardware-bound policy: verify the quote, nonce and
+keyset binding, keyset lifetime, measured compose, and observed TLS SPKI. The
+compose hash is reported but is not compared with a separate release allowlist.
+The deployment must still keep the client-facing TLS terminator inside the
+attested workload; the current CLI does not verify private-key custody.
+
 `--nonce` supplies your own nonce; `--json` emits the transcript as
 structured data.
 
@@ -60,9 +66,8 @@ What these checks prove and how they compose is [aci.md](../spec/aci.md) §1 (th
 trust model) and the §3 trust-chain diagram.
 
 id-4 verifies that the compose the service booted is the one measured into the
-quote, and prints the hash. It does not decide whether that compose is one you
-want: that is your verifier policy ([aci.md](../spec/aci.md) §1.3). Pin the
-hashes you accept with `--accept-compose`, repeatable and available on
+quote, and prints the hash. To narrow the basic policy to reviewed releases,
+pin their hashes with `--accept-compose`, repeatable and available on
 `verify`, `curl`, `send`, `serve`, and `audit`:
 
 ```bash

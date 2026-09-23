@@ -24,9 +24,9 @@ A base URL alone cannot install an attested TLS transport. A host needs a
 custom-fetch hook, a provider-plugin boundary, or a local proxy such as
 `pap serve`.
 
-## What every supported path enforces
+## Shared checks and client-specific policy
 
-The Rust and TypeScript clients share the same security meaning:
+Pinned Rust and TypeScript inference transports share these checks:
 
 1. Fetch an attestation report with a fresh nonce.
 2. Verify the TDX quote and the nonce-bound workload keyset.
@@ -34,10 +34,14 @@ The Rust and TypeScript clients share the same security meaning:
 4. Reject an expired identity and any configured release-policy mismatch.
 5. Send inference bytes only over TLS whose observed SPKI appears in the
    attested keyset.
-6. Add verified-serving or session constraints before an aggregator forwards.
-7. Capture exact wire digests and verify signed receipts and cited sessions
-   when the selected client promises response verification.
-8. Fail closed when a required check fails.
+6. Fail closed when a required check fails.
+
+Serving and response policy then depends on the client. `pap send`, `pap serve`,
+and the TypeScript runtime require verified serving by default. `pap curl`
+passes the caller's request body unchanged, so include `provider.aci_verified`
+or session IDs when that request must fail closed at the provider hop. Clients
+that promise response verification capture exact wire digests and verify signed
+receipts and cited sessions; `pap curl` does not verify a response receipt.
 
 The browser verifier can check artifacts and quote evidence, but browser APIs
 do not expose the peer certificate needed for SPKI pinning. Use the Node or Bun

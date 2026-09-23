@@ -54,12 +54,21 @@ VERIFIED (5 pass, 1 skipped: custody policy not implemented)
 PINNED      curl -> attested TLS key
 ```
 
+The CLI's basic policy checks the hardware quote, nonce, keyset, measured
+compose, and live TLS key. It reports the compose hash without requiring a
+separate release allowlist. Add `--accept-compose` when you want to accept only
+a specific reviewed compose.
+
 `provider.aci_verified` protects the second hop. It tells the verified gateway
 to refuse the request unless the selected model backend passes its own
 attestation and channel-binding checks.
 
 Together, these checks limit remote plaintext access to workloads your policy
-accepts: the gateway, any confidential provider router, and the model runner.
+accepts: the gateway's attested workload, any confidential provider router,
+and the model runner. The client-facing TLS terminator must run inside that
+attested workload, alongside the gateway process. The gateway process itself
+serves HTTP behind the terminator.
+
 Under the TEE threat model, the gateway operator, model operator, and cloud
 host cannot inspect those workloads' protected memory. Your local app still
 sees the prompt and response.
@@ -95,15 +104,16 @@ ACI connects those facts into one chain:
 | Signed response receipt | Which request, response, route, and verification result the gateway recorded. |
 | Attested session | Which provider evidence and channel binding backed an aggregated request. |
 
-The proof is useful because the client verifies hashes, signatures, quote
-evidence, measurements, and channel keys locally. A response header that merely
-says `verified` is not evidence.
+The client checks the quote, measurement, and channel key before `pap curl`
+sends the request. Clients that audit the response also verify receipt hashes
+and signatures locally. A response header that merely says `verified` is not
+evidence.
 
 ## Where your data goes
 
 ```mermaid
 flowchart LR
-    client[Your app] -->|attested, pinned channel| gateway[Gateway TEE]
+    client[Your app] -->|attested, pinned channel| gateway[Attested workload: TLS terminator + gateway]
     gateway -->|verified, bound channel| provider[Accepted provider workload or route]
     provider --> gateway --> client
     gateway -.->|auth hash, routing, pricing, usage| control[Optional control plane]

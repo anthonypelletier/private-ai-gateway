@@ -2,17 +2,27 @@
 
 This directory contains the reference dstack deployment for Private AI Gateway. It uses the versioned [`git-launcher`](https://github.com/Dstack-TEE/dstack-examples/tree/git-launcher-v0.3.0/git-launcher) source to check out an exact gateway commit, then runs the repository-owned `entrypoint.sh` inside the confidential VM.
 
-The checked-in manifest is an auditable starting point. It is not a complete production platform. Authentication, rate limiting, external TLS termination, secret delivery, monitoring, backup, and availability remain deployment responsibilities.
+The checked-in manifest is an auditable starting point, not a complete
+production platform. Authentication, rate limiting, TLS termination, secret
+delivery, monitoring, backup, and availability remain deployment
+responsibilities. The client-facing TLS terminator must be part of the attested
+workload, even though it runs outside the gateway process.
 
 ## Deployment model
 
 The default [`compose.yaml`](compose.yaml) runs one gateway process in direct-upstream mode:
 
 ```text
-client -> external TLS terminator -> gateway :8086 -> configured providers
+client -> TLS terminator (inside attested workload) -> gateway :8086 -> configured providers
 ```
 
-The gateway serves HTTP on port `8086`; it does not terminate TLS. Configure the optional in-process middleware and its external HTTP control plane in the static config when policy-based routing is required.
+The gateway serves HTTP on port `8086`; it does not terminate TLS. The
+checked-in compose does not run a TLS terminator. Add one inside the same
+attested workload and review its image, configuration, and key handling as
+part of the complete deployment before exposing an inference endpoint.
+
+Configure the optional in-process middleware and its external HTTP control
+plane in the static config when policy-based routing is required.
 
 The compose pins this launcher image by digest:
 
@@ -158,7 +168,10 @@ Supported provider values are:
 
 ## Bind public TLS identities
 
-TLS termination sits outside the gateway, but the gateway can include the terminator's leaf-certificate SPKI in its attested workload keyset. Mount each leaf certificate and add it to the static config:
+TLS termination sits outside the gateway process but must remain inside the
+attested workload. The gateway can include the terminator's leaf-certificate
+SPKI in its attested workload keyset. Mount each leaf certificate and add it
+to the static config:
 
 ```json
 {
@@ -175,7 +188,11 @@ TLS termination sits outside the gateway, but the gateway can include the termin
 
 Preserve the original HTTP `Host` when proxying to port `8086`. The canonical `GET /v1/aci/attestation` handler selects the matching domain binding. When domain bindings are configured, an unknown or malformed host receives `404` instead of a report for another identity.
 
-The verifier must also compare that reported SPKI with the certificate served to the client. Merely listing a certificate file in the workload does not prove that an external terminator uses it.
+The verifier must also compare that reported SPKI with the certificate served
+to the client. Merely listing a certificate file in the workload does not prove
+that the terminator uses it or that its private key stays inside the attested
+boundary. The current CLI checks the observed SPKI but reports the
+private-key-custody check as skipped.
 
 ## Verify the deployment
 

@@ -96,7 +96,7 @@ pull aborts startup so an empty router cannot enter the load-balancer pool.
 ## Downstream TLS binding
 
 The gateway does not serve TLS, but it can attest the leaf certificate keys
-used by a TLS terminator in the same reviewed deployment. Configure one mounted
+used by a TLS terminator inside the same attested workload. Configure one mounted
 leaf certificate for each public hostname:
 
 ```json
@@ -132,8 +132,10 @@ the selected `attestation.evidence.downstream_tls_binding`. Unknown or malformed
 hosts return `404` instead of an unbound report.
 
 TLS issuance, renewal, SNI routing, and private-key custody remain deployment
-responsibilities. A verifier must confirm that the certificate served to the
-client matches the SPKI selected in the report.
+responsibilities. The gateway serves HTTP, so the TLS terminator must run inside
+the accepted attested boundary. A verifier must confirm that the certificate
+served to the client matches the SPKI selected in the report; the current CLI
+does not complete a private-key-custody check.
 
 ## Middleware fields
 
