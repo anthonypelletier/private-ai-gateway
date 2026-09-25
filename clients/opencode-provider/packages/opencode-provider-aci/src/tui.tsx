@@ -3,6 +3,8 @@ import type { PanelInput } from "@opencode/plugin/tui/context";
 import { Plugin, usePlugin } from "@opencode/plugin/tui";
 
 import { createAciRpc } from "./rpc.ts";
+import type { LegacyMessageCheck } from "./signature.ts";
+import { verifyLegacyMessageSignature } from "./signature.ts";
 
 declare global {
   namespace JSX {
@@ -70,6 +72,15 @@ interface AciReceiptsPayload {
     complete: boolean;
     recordedAt: number;
   }[];
+}
+
+export interface AciSignaturePayload {
+  receiptId: string;
+  text?: string;
+  signature?: string;
+  signingAddress?: string;
+  signingAlgo?: string;
+  error?: string;
 }
 
 function initialState(profile: AciTuiProfile): AciTuiState {
@@ -220,6 +231,38 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
 
       const openCommand = `${definition.id}.open`;
       const refreshCommand = `${definition.id}.refresh`;
+      const signatureCommand = `${definition.id}.signature`;
+
+      // Mirror the RedPill "Message Verification" view: fetch the legacy
+      // per-message signature through the verified transport and check it
+      // locally against the reported signing address.
+      const showSignature = async (receiptId?: string) => {
+        try {
+          const payload = (await rpc.signature(receiptId ? { receiptId } : {}, {
+            location,
+          })) as AciSignaturePayload;
+          if (payload.error || !payload.text || !payload.signature || !payload.signingAddress) {
+            context.ui.toast.show({
+              message: `ACI message signature: ${payload.error ?? "unavailable"}`,
+              variant: "warning",
+            });
+            return;
+          }
+          const result = verifyLegacyMessageSignature({
+            text: payload.text,
+            signature: payload.signature,
+            signingAddress: payload.signingAddress,
+          });
+          context.ui.dialog.show(() => (
+            <AciSignatureDialog context={context} payload={payload} result={result} />
+          ));
+        } catch (error) {
+          context.ui.toast.show({
+            message: `ACI message signature failed: ${errorText(error)}`,
+            variant: "error",
+          });
+        }
+      };
 
       // Keymap layers belong to a component scope, so register them from a
       // slot render instead of setup; the CLI mounts its keymap provider above
@@ -265,6 +308,26 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
                   await refresh();
                 },
               },
+              {
+                id: signatureCommand,
+                title: `Show ${profile.label} message signature`,
+                group: "ACI",
+                slash: { name: "aci-signature" },
+                palette: true,
+                run: () => {
+                  void showSignature();
+                },
+              },
+              {
+                id: `${signatureCommand}.panel`,
+                title: `Show ${profile.label} message signature`,
+                group: "ACI",
+                bind: "s",
+                enabled: () => context.ui.panel.current()?.name === panelName,
+                run: () => {
+                  void showSignature();
+                },
+              },
             ],
           }));
           return <box />;
@@ -281,6 +344,86 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
       };
     },
   });
+}
+
+/** Split long hex blobs so the dialog can show every byte without clipping. */
+function wrapHex(value: string, width = 64): string[] {
+  if (value.length === 0) return [""];
+  const lines: string[] = [];
+  for (let index = 0; index < value.length; index += width) {
+    lines.push(value.slice(index, index + width));
+  }
+  return lines;
+}
+
+export function AciSignatureDialog(props: {
+  context: Plugin.Context;
+  payload: AciSignaturePayload;
+  result: LegacyMessageCheck;
+}) {
+  const success = themeColor(
+    props.context,
+    [["status", "success"], ["semantic", "success"], ["success"]],
+    "green",
+  );
+  const danger = themeColor(
+    props.context,
+    [["status", "error"], ["semantic", "error"], ["error"]],
+    "red",
+  );
+  const muted = themeColor(
+    props.context,
+    [
+      ["text", "muted"],
+      ["text", "subtle"],
+    ],
+    "gray",
+  );
+
+  return (
+    <box flexDirection="column" padding={1}>
+      <text fg={muted}>Message Verification</text>
+      <text fg={props.result.ok ? success : danger}>
+        {props.result.ok
+          ? "✓ Message verified"
+          : `✗ Signature not verified${props.result.reason ? `: ${props.result.reason}` : ""}`}
+      </text>
+
+      <text> </text>
+      <text>Signing address</text>
+      <text fg={muted}>{props.payload.signingAddress ?? ""}</text>
+      {!props.result.ok && props.result.recoveredAddress ? (
+        <box flexDirection="column">
+          <text>Recovered address</text>
+          <text fg={danger}>{props.result.recoveredAddress}</text>
+        </box>
+      ) : null}
+
+      <text> </text>
+      <text>Message</text>
+      {wrapHex(props.payload.text ?? "").map((line) => (
+        <text fg={muted}>{line}</text>
+      ))}
+
+      <text> </text>
+      <text>Signature</text>
+      {wrapHex(props.payload.signature ?? "").map((line) => (
+        <text fg={muted}>{line}</text>
+      ))}
+
+      <text> </text>
+      <text fg={muted}>
+        Algorithm {props.payload.signingAlgo ?? "unknown"} · receipt {props.payload.receiptId}
+      </text>
+      <text fg={muted}>
+        The signature covers request_hash:response_hash. The signer is recovered locally and
+        compared with the address the gateway reports over the pinned transport; the receipt keeps
+        its own verification path.
+      </text>
+      <text> </text>
+      <text fg={muted}>esc close</text>
+    </box>
+  );
 }
 
 function AciBadge(props: { state: AciTuiState; label: string }) {
@@ -398,7 +541,7 @@ function AciPanel(props: { panel: PanelInput; state: AciTuiState; profile: AciTu
       )}
 
       <text> </text>
-      <text fg={muted}>r verify again · esc close</text>
+      <text fg={muted}>s message signature · r verify again · esc close</text>
     </box>
   );
 }

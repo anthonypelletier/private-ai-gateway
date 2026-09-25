@@ -23,6 +23,7 @@ import {
 } from "./endpoints.ts";
 import { pluginConfig, type OpenCodeAciPluginOptions } from "./options.ts";
 import { createAciRpc } from "./rpc.ts";
+import { fetchLegacySignature, latestCompletionReceiptId } from "./signature.ts";
 
 export interface CreateOpenCodeAciV2PluginOptions {
   /** Stable plugin id used for status, diagnostics, and plugin-scoped storage. */
@@ -249,6 +250,7 @@ export function createOpenCodeAciV2Plugin({
       let catalog: readonly AciModel[] = [];
       let blockedReason = "ACI provider is still verifying the gateway";
       let disposed = false;
+      let lastAuthorization: string | undefined;
 
       const resolveConfig = () =>
         resolveAciProviderConfig(profile, {
@@ -273,6 +275,12 @@ export function createOpenCodeAciV2Plugin({
         if (!provider) throw new Error(blockedReason);
         const violation = verifiedEndpointOnly(request, provider.config.baseURL);
         if (violation) throw new Error(`ACI inference blocked: ${violation}`);
+        // Keep the latest credential so the on-demand legacy message signature
+        // lookup can authenticate like a model request does.
+        const authorization =
+          (request instanceof Request ? request.headers.get("authorization") : undefined) ??
+          new Headers(init?.headers).get("authorization");
+        if (authorization) lastAuthorization = authorization;
         const original = init?.body;
         const sanitized = original === undefined ? undefined : sanitizeAciRequestBody(original);
         if (sanitized === original || !init) {
@@ -511,6 +519,22 @@ export function createOpenCodeAciV2Plugin({
         refresh: async () => {
           await refresh().catch(report);
           return { phase: statusSnapshot().phase };
+        },
+        signature: async (input) => {
+          const provider = active;
+          if (!provider) return { receiptId: "", error: blockedReason };
+          const requested = (input as { receiptId?: string }).receiptId;
+          const receiptId =
+            requested && requested.length > 0
+              ? requested
+              : latestCompletionReceiptId(provider.receipts());
+          if (!receiptId) return { receiptId: "", error: "no receipt recorded in this process" };
+          return fetchLegacySignature({
+            baseURL: provider.config.baseURL,
+            receiptId,
+            authorization: lastAuthorization,
+            fetch: secureFetch,
+          });
         },
       });
 

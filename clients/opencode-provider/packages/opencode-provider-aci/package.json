@@ -21,7 +21,7 @@
   },
   "files": [
     "dist",
-    "src/tui.tsx",
+    "src",
     "README.md",
     "LICENSE"
   ],
@@ -69,6 +69,8 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.0",
+    "@noble/hashes": "^2.4.0",
+    "@noble/secp256k1": "^3.2.0",
     "@opencode-ai/plugin": "^1.18.32",
     "@opencode/plugin": "^2.0.0",
     "@phala/aci-provider": "^0.7.3"

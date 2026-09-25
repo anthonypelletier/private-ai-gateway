@@ -83,7 +83,15 @@ the CLI beside the server plugin):
 - a Verification Center panel opened with `/aci`, showing the end-to-end,
   verified-software, and confidential-hardware checks, the gateway identity,
   keyset validity, model and receipt counts, and the latest receipts;
-- `r` inside the panel runs verification again through the server plugin.
+- `r` inside the panel runs verification again through the server plugin;
+- `/aci-signature` (or `s` inside the panel) shows the gateway's
+  per-message signature for the latest completion: signing address, signed
+  `request_hash:response_hash` message, 65-byte secp256k1 signature, and
+  algorithm. The terminal extension recovers the signer locally from the
+  Ethereum personal-message digest and reports `✓ Message verified` only when
+  the recovered address matches the signing address the gateway reports over
+  the pinned transport. The response receipt keeps its own verification path
+  (`/aci-receipt` or the receipt audit).
 
 The panel and badge read the server state over the plugin RPC
 (`@phala/opencode-provider-aci/rpc`), so they also work when the CLI is

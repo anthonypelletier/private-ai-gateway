@@ -85,6 +85,20 @@ export function createAciRpc(profile: Pick<AciProviderProfile, "providerId" | "l
         input: object({}),
         output: object({ phase: { type: "string" } }, ["phase"]),
       },
+      signature: {
+        input: object({ receiptId: { type: "string" } }),
+        output: object(
+          {
+            receiptId: { type: "string" },
+            text: { type: "string" },
+            signature: { type: "string" },
+            signingAddress: { type: "string" },
+            signingAlgo: { type: "string" },
+            error: { type: "string" },
+          },
+          ["receiptId"],
+        ),
+      },
     },
     events: {
       changed: { schema: object({ phase: { type: "string" } }, ["phase"]) },

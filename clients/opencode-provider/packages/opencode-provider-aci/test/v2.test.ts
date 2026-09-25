@@ -563,6 +563,9 @@ test("exposes ACI state through the shared RPC", async () => {
     const result = (await registration.handlers.refresh!({}, {})) as { phase: string };
     expect(["connecting", "blocked", "verified"]).toContain(result.phase);
     expect(registration.emitted.some((entry) => entry.name === "changed")).toBe(true);
+
+    const signature = (await registration.handlers.signature!({}, {})) as { error?: string };
+    expect(signature.error).toBeString();
   } finally {
     await cleanup?.();
   }
