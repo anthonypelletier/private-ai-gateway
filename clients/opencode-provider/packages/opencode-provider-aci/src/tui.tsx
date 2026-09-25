@@ -126,13 +126,17 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
     id: `aci-tui-${profile.providerId}`,
     setup(context) {
       const rpc = context.client.rpc(definition);
+      const location = context.location ?? context.data.location.default();
       const [state, update] = context.storage.memory<AciTuiState>("status", {
         initial: initialState(profile),
       });
 
       const refresh = async () => {
         try {
-          const [statusRaw, receiptsRaw] = await Promise.all([rpc.status({}), rpc.receipts({})]);
+          const [statusRaw, receiptsRaw] = await Promise.all([
+            rpc.status({}, { location }),
+            rpc.receipts({}, { location }),
+          ]);
           const status = statusRaw as AciStatusPayload;
           const receipts = receiptsRaw as AciReceiptsPayload;
           update((draft) => {
@@ -160,14 +164,23 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
           });
         } catch (error) {
           update((draft) => {
-            draft.phase = "blocked";
+            // The server may simply not have this provider loaded for the
+            // current location yet; keep it distinct from a blocked gateway.
+            draft.phase = "unreachable";
             draft.error = error instanceof Error ? error.message : String(error);
           });
         }
       };
 
       void refresh();
-      const stopEvents = rpc.events.on("changed", () => {
+      // Recover automatically once the server activates this location's plugin
+      // or finishes a slow verification.
+      const poll = setInterval(() => {
+        void refresh();
+      }, 5000);
+      const stopEvents = rpc.events.on("changed", (event) => {
+        const eventLocation = (event as { location?: { directory?: string } }).location;
+        if (eventLocation?.directory && eventLocation.directory !== location.directory) return;
         void refresh();
       });
 
@@ -222,7 +235,7 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
                 enabled: () => context.ui.panel.current()?.name === panelName,
                 run: async () => {
                   try {
-                    const result = (await rpc.refresh({})) as { phase?: string };
+                    const result = (await rpc.refresh({}, { location })) as { phase?: string };
                     context.ui.toast.show({
                       message: `ACI verification: ${result.phase ?? "unknown"}`,
                       variant: result.phase === "verified" ? "success" : "warning",
@@ -245,6 +258,7 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
       });
 
       return () => {
+        clearInterval(poll);
         stopEvents();
         stopPrompt();
         stopHome();
@@ -260,6 +274,7 @@ function AciBadge(props: { state: AciTuiState; label: string }) {
   const text = () => {
     if (props.state.phase === "verified") return `✓ ${props.label}`;
     if (props.state.phase === "connecting") return `… ${props.label}`;
+    if (props.state.phase === "unreachable") return `? ${props.label}`;
     return `✗ ${props.label}`;
   };
   const color = () =>
@@ -267,7 +282,16 @@ function AciBadge(props: { state: AciTuiState; label: string }) {
       ? themeColor(context, [["status", "success"], ["semantic", "success"], ["success"]], "green")
       : props.state.phase === "connecting"
         ? themeColor(context, [["status", "warning"], ["warning"]], "yellow")
-        : themeColor(context, [["status", "error"], ["error"]], "red");
+        : props.state.phase === "unreachable"
+          ? themeColor(
+              context,
+              [
+                ["text", "muted"],
+                ["text", "subtle"],
+              ],
+              "gray",
+            )
+          : themeColor(context, [["status", "error"], ["error"]], "red");
   return <text fg={color()}> ACI {text()} </text>;
 }
 
@@ -293,13 +317,19 @@ function AciPanel(props: { panel: PanelInput; state: AciTuiState; profile: AciTu
   );
 
   const verified = () => props.state.phase === "verified";
+  const summary = () =>
+    verified()
+      ? "Your chat is confidential."
+      : props.state.phase === "unreachable"
+        ? "ACI server state unavailable."
+        : "Not verified.";
   const check = (ok: boolean) => (ok ? "✓" : "✗");
   const lineColor = (ok: boolean) => (ok ? success : danger);
 
   return (
     <box flexDirection="column" padding={1}>
       <text fg={lineColor(verified())}>
-        {check(verified())} {verified() ? "Your chat is confidential." : "Not verified."}
+        {check(verified())} {summary()}
       </text>
       <text fg={muted}>
         {props.profile.label}
