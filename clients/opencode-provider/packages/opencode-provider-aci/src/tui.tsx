@@ -117,6 +117,22 @@ function when(ms: number): string {
   return ms > 0 ? new Date(ms).toISOString().replace("T", " ").slice(0, 16) : "unknown";
 }
 
+/** RPC failures arrive as tagged error objects, not Error instances. */
+function errorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const record = error as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.length > 0) return record.message;
+    if (typeof record.type === "string" && record.type.length > 0) return record.type;
+    try {
+      return JSON.stringify(record).slice(0, 200);
+    } catch {
+      return "unknown error";
+    }
+  }
+  return String(error);
+}
+
 export function createAciTuiPlugin(profile: AciTuiProfile) {
   const definition = createAciRpc(profile);
   const panelName = `aci-verify-${profile.providerId}`;
@@ -167,7 +183,7 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
             // The server may simply not have this provider loaded for the
             // current location yet; keep it distinct from a blocked gateway.
             draft.phase = "unreachable";
-            draft.error = error instanceof Error ? error.message : String(error);
+            draft.error = errorText(error);
           });
         }
       };
@@ -242,9 +258,7 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
                     });
                   } catch (error) {
                     context.ui.toast.show({
-                      message: `ACI verification failed: ${
-                        error instanceof Error ? error.message : String(error)
-                      }`,
+                      message: `ACI verification failed: ${errorText(error)}`,
                       variant: "error",
                     });
                   }
@@ -315,16 +329,26 @@ function AciPanel(props: { panel: PanelInput; state: AciTuiState; profile: AciTu
     ],
     "gray",
   );
+  const warning = themeColor(
+    context,
+    [["status", "warning"], ["semantic", "warning"], ["warning"]],
+    "yellow",
+  );
 
   const verified = () => props.state.phase === "verified";
+  const connecting = () => props.state.phase === "connecting";
+  const unreachable = () => props.state.phase === "unreachable";
   const summary = () =>
     verified()
       ? "Your chat is confidential."
-      : props.state.phase === "unreachable"
+      : unreachable()
         ? "ACI server state unavailable."
-        : "Not verified.";
-  const check = (ok: boolean) => (ok ? "✓" : "✗");
-  const lineColor = (ok: boolean) => (ok ? success : danger);
+        : connecting()
+          ? "Verifying the gateway…"
+          : "Not verified.";
+  const check = (ok: boolean) => (ok ? "✓" : connecting() ? "…" : unreachable() ? "?" : "✗");
+  const lineColor = (ok: boolean) =>
+    ok ? success : connecting() ? warning : unreachable() ? muted : danger;
 
   return (
     <box flexDirection="column" padding={1}>
