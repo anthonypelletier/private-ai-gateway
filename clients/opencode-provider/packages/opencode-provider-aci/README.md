@@ -73,6 +73,22 @@ The plugin definition for OpenCode V2 is loaded lazily from `./v2`, so V1
 hosts never import the V2 plugin SDK or the AI SDK provider just to load the
 server-plugin entrypoint.
 
+## OpenCode 2 terminal extension
+
+On OpenCode 2 the package also ships a terminal extension (`./tui`, loaded by
+the CLI beside the server plugin):
+
+- a footer status badge: `ACI ✓ <provider>` when the gateway is verified,
+  `…` while verifying, `✗` when blocked;
+- a Verification Center panel opened with `/aci`, showing the end-to-end,
+  verified-software, and confidential-hardware checks, the gateway identity,
+  keyset validity, model and receipt counts, and the latest receipts;
+- `r` inside the panel runs verification again through the server plugin.
+
+The panel and badge read the server state over the plugin RPC
+(`@phala/opencode-provider-aci/rpc`), so they also work when the CLI is
+connected to a remote OpenCode server.
+
 Attestation and response receipt verification are automatic and fail closed;
 the commands only display evidence or rerun an audit. The local wire-digest
 history keeps the latest 32 receipt-bearing requests by default and is cleared

@@ -22,6 +22,7 @@ import {
   verifiedEndpointOnly,
 } from "./endpoints.ts";
 import { pluginConfig, type OpenCodeAciPluginOptions } from "./options.ts";
+import { createAciRpc } from "./rpc.ts";
 
 export interface CreateOpenCodeAciV2PluginOptions {
   /** Stable plugin id used for status, diagnostics, and plugin-scoped storage. */
@@ -458,6 +459,67 @@ export function createOpenCodeAciV2Plugin({
         }
       });
 
+      const statusSnapshot = () => {
+        const status = active?.status();
+        const identity = status?.identity;
+        const verifying = blockedReason === "ACI provider is still verifying the gateway";
+        const phase = status ? status.phase : verifying ? "connecting" : "blocked";
+        const error = status?.error ?? (!status && !verifying ? blockedReason : undefined);
+        return {
+          providerID,
+          label: profile.label,
+          phase,
+          ...(error ? { error } : {}),
+          modelCount: catalog.length,
+          receiptCount: active?.receipts().length ?? 0,
+          ...(identity
+            ? {
+                identity: {
+                  origin: identity.origin,
+                  apiVersion: String(identity.report.api_version),
+                  composeHash: identity.composeHash,
+                  releasePinned: Boolean(active?.config.trust.acceptedComposeHashes?.length),
+                  keysetDigest: identity.workloadKeysetDigest,
+                  tlsSpkiPins: [...identity.tlsSpkiPins],
+                  verifiedAt: identity.verifiedAt,
+                  expiresAt: identity.expiresAt,
+                },
+              }
+            : {}),
+        };
+      };
+
+      const rpcRegistration = await ctx.rpc.register(createAciRpc(profile), {
+        status: async () => statusSnapshot(),
+        attestation: async () => ({ text: await inspectForCommand("attestation", "") }),
+        receipts: async () => ({
+          items: (active?.receipts() ?? []).map((item) => ({
+            receiptId: item.receiptId,
+            method: item.method,
+            path: item.path,
+            status: item.status,
+            complete: item.responseComplete,
+            recordedAt: item.recordedAt,
+          })),
+        }),
+        receipt: async (input) => ({
+          text: await inspectForCommand("receipt", (input as { id?: string }).id ?? ""),
+        }),
+        session: async (input) => ({
+          text: await inspectForCommand("session", (input as { id: string }).id),
+        }),
+        refresh: async () => {
+          await refresh().catch(report);
+          return { phase: statusSnapshot().phase };
+        },
+      });
+
+      const emitChanged = () => {
+        void rpcRegistration.events
+          .emit("changed", { phase: statusSnapshot().phase })
+          .catch(() => undefined);
+      };
+
       const verify = async () => {
         const candidate = createAciProvider(resolveConfig());
         try {
@@ -495,6 +557,7 @@ export function createOpenCodeAciV2Plugin({
         }
         refreshing = verify().finally(() => {
           refreshing = undefined;
+          emitChanged();
           if (refreshRequested) {
             refreshRequested = false;
             void refresh().catch(report);

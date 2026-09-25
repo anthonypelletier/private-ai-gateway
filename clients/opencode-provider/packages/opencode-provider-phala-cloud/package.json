@@ -22,6 +22,7 @@
   },
   "files": [
     "dist",
+    "src/tui.tsx",
     "README.md",
     "LICENSE"
   ],
@@ -34,6 +35,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./tui": {
+      "types": "./src/tui.tsx",
+      "import": "./src/tui.tsx",
+      "default": "./src/tui.tsx"
     }
   },
   "publishConfig": {

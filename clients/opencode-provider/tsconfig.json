@@ -4,6 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": true,
+    "jsx": "preserve",
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -11,8 +12,15 @@
     "paths": {
       "@phala/aci-provider": ["../provider/src/index.ts"],
       "@phala/opencode-provider-aci": ["./packages/opencode-provider-aci/src/index.ts"],
-      "@phala/opencode-provider-aci/v2": ["./packages/opencode-provider-aci/src/v2.ts"]
+      "@phala/opencode-provider-aci/v2": ["./packages/opencode-provider-aci/src/v2.ts"],
+      "@phala/opencode-provider-aci/rpc": ["./packages/opencode-provider-aci/src/rpc.ts"],
+      "@phala/opencode-provider-aci/tui": ["./packages/opencode-provider-aci/src/tui.tsx"]
     }
   },
-  "include": ["packages/*/src/**/*.ts", "packages/*/index.ts", "packages/*/test/**/*.ts"]
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.tsx",
+    "packages/*/index.ts",
+    "packages/*/test/**/*.ts"
+  ]
 }

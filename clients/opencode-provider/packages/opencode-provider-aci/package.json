@@ -21,6 +21,7 @@
   },
   "files": [
     "dist",
+    "src/tui.tsx",
     "README.md",
     "LICENSE"
   ],
@@ -38,6 +39,16 @@
       "types": "./dist/v2.d.ts",
       "import": "./dist/v2.js",
       "default": "./dist/v2.js"
+    },
+    "./rpc": {
+      "types": "./dist/rpc.d.ts",
+      "import": "./dist/rpc.js",
+      "default": "./dist/rpc.js"
+    },
+    "./tui": {
+      "types": "./src/tui.tsx",
+      "import": "./src/tui.tsx",
+      "default": "./src/tui.tsx"
     }
   },
   "publishConfig": {
@@ -64,6 +75,11 @@
   },
   "devDependencies": {
     "@opencode-ai/sdk": "1.18.32"
+  },
+  "peerDependencies": {
+    "@opentui/core": ">=0.5.10",
+    "@opentui/solid": ">=0.5.10",
+    "solid-js": ">=1.9.0"
   },
   "engines": {
     "bun": ">=1.4.0",

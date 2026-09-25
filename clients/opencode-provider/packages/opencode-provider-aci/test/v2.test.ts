@@ -100,6 +100,11 @@ function fakeContext({
     remove: (_providerID: string, _id: string): void => {},
   };
   const modelTransforms: ((editor: typeof modelEditor) => void)[] = [];
+  const rpcRegistrations: {
+    id: string;
+    handlers: Record<string, (...args: any[]) => Promise<unknown>>;
+    emitted: { name: string; data: unknown }[];
+  }[] = [];
   const sessionHooks: {
     name: string;
     callback: (event: Record<string, any>) => void;
@@ -204,6 +209,23 @@ function fakeContext({
         },
       }),
     },
+    rpc: {
+      register: async (
+        definition: { id: string },
+        handlers: Record<string, (...args: any[]) => Promise<unknown>>,
+      ) => {
+        const emitted: { name: string; data: unknown }[] = [];
+        rpcRegistrations.push({ id: definition.id, handlers, emitted });
+        return {
+          dispose: async () => {},
+          events: {
+            emit: async (name: string, data: unknown) => {
+              emitted.push({ name, data });
+            },
+          },
+        };
+      },
+    },
     session: {
       prompt: async (input: { sessionID: string; text: string; delivery?: string }) => {
         prompts.push(input);
@@ -235,6 +257,7 @@ function fakeContext({
     synthetics,
     modelTransforms,
     sessionHooks,
+    rpcRegistrations,
   };
 }
 
@@ -512,6 +535,34 @@ test("blocks requests that do not target the verified gateway", async () => {
         request: new Request("https://attacker.example/v1/chat/completions"),
       }),
     ).not.toThrow();
+  } finally {
+    await cleanup?.();
+  }
+});
+
+test("exposes ACI state through the shared RPC", async () => {
+  const fake = fakeContext({ options: { baseURL } });
+  const plugin = await loadOpenCodeAciV2Plugin({ id: "aci-test" });
+  const cleanup = await plugin.setup(fake.context);
+
+  try {
+    const registration = fake.rpcRegistrations[0]!;
+    expect(registration.id).toBe("aci-aci");
+
+    const status = (await registration.handlers.status!({}, {})) as Record<string, unknown>;
+    expect(status.providerID).toBe("aci");
+    expect(["connecting", "blocked", "verified"]).toContain(String(status.phase));
+    expect(status.modelCount).toBe(0);
+
+    const receipts = (await registration.handlers.receipts!({}, {})) as { items: unknown[] };
+    expect(receipts.items).toEqual([]);
+
+    const attestation = (await registration.handlers.attestation!({}, {})) as { text: string };
+    expect(attestation.text).toContain("not connected to a verified gateway");
+
+    const result = (await registration.handlers.refresh!({}, {})) as { phase: string };
+    expect(["connecting", "blocked", "verified"]).toContain(result.phase);
+    expect(registration.emitted.some((entry) => entry.name === "changed")).toBe(true);
   } finally {
     await cleanup?.();
   }
