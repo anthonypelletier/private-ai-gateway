@@ -79,10 +79,14 @@ On OpenCode 2 the package also ships a terminal extension (`./tui`, loaded by
 the CLI beside the server plugin):
 
 - a footer status badge: `ACI ✓ <provider>` when the gateway is verified,
-  `…` while verifying, `✗` when blocked;
+  `…` while verifying, `✗` when blocked. The badge only appears in sessions
+  whose selected model belongs to this provider, and it queries the server for
+  the session's own location, so a client that browses several projects never
+  reports another project's gateway state;
 - a Verification Center panel opened with `/aci`, showing the end-to-end,
   verified-software, and confidential-hardware checks, the gateway identity,
-  keyset validity, model and receipt counts, and the latest receipts;
+  keyset validity, model and receipt counts, and the latest receipts. It notes
+  when the open session is not using this provider;
 - `r` inside the panel runs verification again through the server plugin;
 - `/aci-signature` (or `s` inside the panel) shows the gateway's
   per-message signature for the latest completion: signing address, signed

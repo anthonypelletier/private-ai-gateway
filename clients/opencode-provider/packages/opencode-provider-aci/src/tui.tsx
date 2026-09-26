@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/solid */
 import type { PanelInput } from "@opencode/plugin/tui/context";
-import { Plugin, usePlugin } from "@opencode/plugin/tui";
+import { Plugin } from "@opencode/plugin/tui";
 
 import { createAciRpc } from "./rpc.ts";
 import type { LegacyMessageCheck } from "./signature.ts";
@@ -144,6 +144,17 @@ function errorText(error: unknown): string {
   return String(error);
 }
 
+/**
+ * Gateway claims belong to sessions actually served by this provider: a green
+ * ACI badge on an unrelated model reads as if that conversation was attested.
+ */
+export function sessionUsesProvider(
+  session: { model?: { providerID?: string } } | undefined,
+  providerId: string,
+): boolean {
+  return session?.model?.providerID === providerId;
+}
+
 export function createAciTuiPlugin(profile: AciTuiProfile) {
   const definition = createAciRpc(profile);
   const panelName = `aci-verify-${profile.providerId}`;
@@ -153,7 +164,11 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
     id: `aci-tui-${profile.providerId}`,
     setup(context) {
       const rpc = context.client.rpc(definition);
-      const location = context.location ?? context.data.location.default();
+      // Fallback location before a session is known. The badge and panel
+      // re-target the active session's location so a client connected to a
+      // shared server never reports another project's gateway state.
+      const defaultLocation = context.location ?? context.data.location.default();
+      let location = defaultLocation;
       const [state, update] = context.storage.memory<AciTuiState>("status", {
         initial: initialState(profile),
       });
@@ -199,6 +214,23 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
         }
       };
 
+      const sessionOf = (sessionID?: string) =>
+        sessionID ? context.data.session.get(sessionID) : undefined;
+
+      const sameLocation = (
+        left: { directory: string; workspaceID?: string },
+        right: { directory: string; workspaceID?: string },
+      ) => left.directory === right.directory && left.workspaceID === right.workspaceID;
+
+      // Sessions carry their own location, which can differ from the CLI's when
+      // one client browses several projects; query the server for that one.
+      const trackSession = (sessionID?: string) => {
+        const next = sessionOf(sessionID)?.location ?? defaultLocation;
+        if (sameLocation(next, location)) return;
+        location = next;
+        void refresh();
+      };
+
       void refresh();
       // Recover automatically once the server activates this location's plugin
       // or finishes a slow verification.
@@ -213,20 +245,29 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
 
       const stopPrompt = context.ui.slot({
         append: "prompt.footer.status",
-        render: () => <AciBadge state={state} label={badge} />,
-      });
-      const stopHome = context.ui.slot({
-        append: "home.footer.status",
-        render: () => <AciBadge state={state} label={badge} />,
+        render: ({ sessionID }) => {
+          // Only claim gateway verification for sessions on this provider, and
+          // read the session's own location on a shared server.
+          if (!sessionUsesProvider(sessionOf(sessionID), profile.providerId)) return <box />;
+          trackSession(sessionID);
+          return <AciBadge context={context} state={state} label={badge} />;
+        },
       });
       const stopPanel = context.ui.slot({
         append: "session.panel",
-        render: (panel) =>
-          panel.name === panelName ? (
-            <AciPanel panel={panel} state={state} profile={profile} />
-          ) : (
-            <box />
-          ),
+        render: (panel) => {
+          if (panel.name !== panelName) return <box />;
+          trackSession(panel.sessionID);
+          return (
+            <AciPanel
+              context={context}
+              panel={panel}
+              state={state}
+              profile={profile}
+              sessionIsAci={sessionUsesProvider(sessionOf(panel.sessionID), profile.providerId)}
+            />
+          );
+        },
       });
 
       const openCommand = `${definition.id}.open`;
@@ -237,6 +278,16 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
       // per-message signature through the verified transport and check it
       // locally against the reported signing address.
       const showSignature = async (receiptId?: string) => {
+        const route = context.ui.router.current();
+        const sessionID = route.type === "session" ? route.sessionID : undefined;
+        if (sessionID && !sessionUsesProvider(sessionOf(sessionID), profile.providerId)) {
+          context.ui.toast.show({
+            message: `ACI message signature: this session does not use ${profile.label}`,
+            variant: "warning",
+          });
+          return;
+        }
+        if (sessionID) trackSession(sessionID);
         try {
           const payload = (await rpc.signature(receiptId ? { receiptId } : {}, {
             location,
@@ -338,7 +389,6 @@ export function createAciTuiPlugin(profile: AciTuiProfile) {
         clearInterval(poll);
         stopEvents();
         stopPrompt();
-        stopHome();
         stopPanel();
         stopCommands();
       };
@@ -426,8 +476,8 @@ export function AciSignatureDialog(props: {
   );
 }
 
-function AciBadge(props: { state: AciTuiState; label: string }) {
-  const context = usePlugin();
+function AciBadge(props: { context: Plugin.Context; state: AciTuiState; label: string }) {
+  const context = props.context;
   const text = () => {
     if (props.state.phase === "verified") return `✓ ${props.label}`;
     if (props.state.phase === "connecting") return `… ${props.label}`;
@@ -452,8 +502,14 @@ function AciBadge(props: { state: AciTuiState; label: string }) {
   return <text fg={color()}> ACI {text()} </text>;
 }
 
-function AciPanel(props: { panel: PanelInput; state: AciTuiState; profile: AciTuiProfile }) {
-  const context = usePlugin();
+export function AciPanel(props: {
+  context: Plugin.Context;
+  panel: PanelInput;
+  state: AciTuiState;
+  profile: AciTuiProfile;
+  sessionIsAci: boolean;
+}) {
+  const context = props.context;
   const success = themeColor(
     context,
     [["status", "success"], ["semantic", "success"], ["success"]],
@@ -503,6 +559,9 @@ function AciPanel(props: { panel: PanelInput; state: AciTuiState; profile: AciTu
         {props.state.origin ? ` · ${props.state.origin}` : ""}
       </text>
       {props.state.error ? <text fg={danger}>{props.state.error}</text> : null}
+      {props.sessionIsAci ? null : (
+        <text fg={warning}>This session is not using {props.profile.label}.</text>
+      )}
 
       <text> </text>
       <text fg={lineColor(props.state.tlsSpkiPins.length > 0)}>

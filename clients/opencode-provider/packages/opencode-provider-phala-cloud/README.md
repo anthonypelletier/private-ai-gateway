@@ -4,8 +4,26 @@ Phala Cloud's native OpenCode provider. OpenCode `1.18.29` (V1) and OpenCode 2
 are supported. Install it globally through OpenCode's official plugin command:
 
 ```sh
-opencode plugin opencode-provider-phala-cloud --global
+opencode plugin add opencode-provider-phala-cloud
 ```
+
+For a local checkout or an unpublished package, point OpenCode at the package
+directory instead; V2 loads the TypeScript entrypoint from source and watches
+it for changes:
+
+```jsonc
+{
+  "plugins": [
+    {
+      "package": "/path/to/private-ai-gateway/clients/opencode-provider/packages/opencode-provider-phala-cloud",
+    },
+  ],
+}
+```
+
+Each plugin entry must stay one object with `package` and optional `options`
+(`"plugins": [["pkg", {...}]]` is the V1 tuple form and the options are
+dropped).
 
 Restart OpenCode after installing, then use its native provider and model
 pickers:

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { Plugin } from "@opencode/plugin/tui";
 import { testRender } from "@opentui/solid";
 
-import { AciSignatureDialog } from "../src/tui.tsx";
+import { AciPanel, AciSignatureDialog, sessionUsesProvider } from "../src/tui.tsx";
 
 const payload = {
   receiptId: "chatcmpl-test",
@@ -11,6 +11,59 @@ const payload = {
   signingAddress: `0x${"dd".repeat(20)}`,
   signingAlgo: "ecdsa",
 };
+
+test("only claims verification for sessions on this provider", () => {
+  expect(sessionUsesProvider({ model: { providerID: "redpill" } }, "redpill")).toBe(true);
+  expect(sessionUsesProvider({ model: { providerID: "anthropic" } }, "redpill")).toBe(false);
+  expect(sessionUsesProvider({}, "redpill")).toBe(false);
+  expect(sessionUsesProvider(undefined, "redpill")).toBe(false);
+});
+
+test("panel names the provider the session actually uses", async () => {
+  const setup = await testRender(
+    () =>
+      AciPanel({
+        context: { theme: {} } as unknown as Plugin.Context,
+        panel: {
+          name: "aci-verify-redpill",
+          sessionID: "ses_test",
+          width: 80,
+          presentation: "panel",
+          focused: false,
+          focus: () => {},
+          close: () => {},
+          toggleFullscreen: () => {},
+        },
+        state: {
+          providerID: "redpill",
+          label: "RedPill AI",
+          phase: "unreachable",
+          error: "",
+          modelCount: 0,
+          receiptCount: 0,
+          origin: "",
+          apiVersion: "",
+          composeHash: "",
+          releasePinned: false,
+          keysetDigest: "",
+          tlsSpkiPins: [],
+          verifiedAt: 0,
+          expiresAt: 0,
+          receipts: [],
+        },
+        profile: { providerId: "redpill", label: "RedPill AI" },
+        sessionIsAci: false,
+      }),
+    { width: 120, height: 40 },
+  );
+  try {
+    await setup.flush();
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("This session is not using RedPill AI.");
+  } finally {
+    setup.renderer.destroy();
+  }
+});
 
 test("renders the message verification dialog", async () => {
   const setup = await testRender(
